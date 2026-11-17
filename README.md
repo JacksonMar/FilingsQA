@@ -6,7 +6,7 @@ A RAG chatbot that answers questions about US public companies using their SEC f
 and, more importantly, an evaluation and test suite that measures how much you can trust it.
 Numeric answers are checked automatically against official SEC XBRL data.
 
-**Status:** Phase 0 (skeleton). See `docs/DECISIONS.md` for design decisions.
+**Status:** Phase 1 (ingestion). See `docs/DECISIONS.md` for design decisions.
 
 ## Quick start
 
@@ -14,6 +14,10 @@ Numeric answers are checked automatically against official SEC XBRL data.
 cp .env.example .env   # set SEC_USER_AGENT and ANTHROPIC_API_KEY
 make install
 make test
+
+make manifest AS_OF=2026-11-17   # pin filings (once; commit data/manifest/filings.json)
+make ingest                      # download + parse + chunk -> data/processed/chunks.jsonl
+make test-diff                   # compare our Item parser with edgartools on real filings
 ```
 
 ## Disclaimer

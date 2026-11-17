@@ -6,12 +6,17 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
 dependencies = [
+    "beautifulsoup4>=4.15.0",
+    "httpx>=0.28.1",
+    "lxml>=6.1.3",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
+    "typer>=0.29.1",
 ]
 
 [dependency-groups]
 dev = [
+    "edgartools>=6.2.0",
     "mypy>=1.13",
     "pre-commit>=4.0",
     "pytest>=8.3",
@@ -60,4 +65,8 @@ addopts = "-ra --strict-markers"
 markers = [
     "integration: needs running services (Qdrant); excluded from the default unit run",
     "network: talks to external APIs (SEC EDGAR, LLM providers)",
+    "differential: compares our parser with edgartools on real downloaded filings",
 ]
+
+[project.scripts]
+filingsqa = "filingsqa.cli:app"

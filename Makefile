@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install lint format typecheck test test-integration up down ingest serve eval eval-smoke
+.PHONY: help install lint format typecheck test test-integration test-diff up down manifest ingest serve eval eval-smoke
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -20,10 +20,13 @@ typecheck: ## mypy (strict) on src/
 	uv run mypy
 
 test: ## Unit tests (no network, LLM mocked)
-	uv run pytest -m "not integration and not network"
+	uv run pytest -m "not integration and not network and not differential"
 
 test-integration: ## Tests that need Qdrant running (make up)
 	uv run pytest -m integration
+
+test-diff: ## Differential test: our Item parser vs edgartools on real filings
+	uv run pytest -m differential -v
 
 up: ## Start Qdrant
 	docker compose up -d --wait
@@ -31,8 +34,12 @@ up: ## Start Qdrant
 down: ## Stop Qdrant
 	docker compose down
 
-ingest: ## Download filings, chunk, index (Phase 1)
-	@echo "Not implemented yet (Phase 1)"; exit 1
+AS_OF ?= 2026-11-17
+manifest: ## Pin latest 10-K + two 10-Q per company as of AS_OF (commit the result)
+	uv run filingsqa build-manifest --as-of $(AS_OF)
+
+ingest: ## Download pinned filings + XBRL facts, parse and chunk to data/processed/
+	uv run filingsqa ingest
 
 serve: ## Run FastAPI server (Phase 2)
 	@echo "Not implemented yet (Phase 2)"; exit 1
