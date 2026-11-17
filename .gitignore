@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Secrets
+.env
+
+# Data: raw filings and local indexes are never committed
+data/raw/
+data/processed/
+data/qdrant/
+.cache/
+
+# Eval outputs (example reports are committed explicitly under docs/)
+eval/reports/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
