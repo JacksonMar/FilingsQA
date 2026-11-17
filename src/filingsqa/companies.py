@@ -8,9 +8,9 @@ class Company:
     ticker: str
     cik: int
     name: str
-    fiscal_year_end: (
-        str  # informational; the authoritative period comes from each filing's DEI tags
-    )
+    # Informational only; the authoritative fiscal period comes from each filing's DEI tags.
+    fiscal_year_end: str
+    short_name: str  # how people refer to the company in questions
 
     @property
     def cik10(self) -> str:
@@ -21,11 +21,11 @@ class Company:
 COMPANIES: dict[str, Company] = {
     c.ticker: c
     for c in (
-        Company("AAPL", 320193, "Apple Inc.", "late September"),
-        Company("MSFT", 789019, "Microsoft Corporation", "June 30"),
-        Company("NVDA", 1045810, "NVIDIA Corporation", "late January"),
-        Company("JPM", 19617, "JPMorgan Chase & Co.", "December 31"),
-        Company("TSLA", 1318605, "Tesla, Inc.", "December 31"),
+        Company("AAPL", 320193, "Apple Inc.", "late September", "Apple"),
+        Company("MSFT", 789019, "Microsoft Corporation", "June 30", "Microsoft"),
+        Company("NVDA", 1045810, "NVIDIA Corporation", "late January", "NVIDIA"),
+        Company("JPM", 19617, "JPMorgan Chase & Co.", "December 31", "JPMorgan Chase"),
+        Company("TSLA", 1318605, "Tesla, Inc.", "December 31", "Tesla"),
     )
 }
 

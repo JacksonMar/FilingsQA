@@ -113,5 +113,81 @@ def ask(
     )
 
 
+dataset_app = typer.Typer(help="Golden dataset: build, validate, stats.", no_args_is_help=True)
+app.add_typer(dataset_app, name="dataset")
+
+DATASETS_DIR = Path("eval/datasets")
+HANDWRITTEN_DIR = DATASETS_DIR / "handwritten"
+
+
+def _dataset_path(version: str) -> Path:
+    return DATASETS_DIR / f"golden_{version}.jsonl"
+
+
+@dataset_app.command("build")
+def dataset_build(
+    version: Annotated[str, typer.Option(help="Dataset version, e.g. v1")],
+    force: Annotated[bool, typer.Option(help="Overwrite an existing version")] = False,
+) -> None:
+    """Generate XBRL items, merge hand-written ones, write golden_<version>.jsonl + meta."""
+    from filingsqa.evaluation.builder import build_dataset, load_companyfacts, load_handwritten
+    from filingsqa.evaluation.dataset import build_meta, dump_items
+
+    out = _dataset_path(version)
+    if out.exists() and not force:
+        raise typer.BadParameter(f"{out} exists; released versions are immutable (use --force)")
+    manifest = Manifest.load(MANIFEST_PATH)
+    facts = load_companyfacts(FACTS_DIR, {f.ticker for f in manifest.filings})
+    items, warnings = build_dataset(manifest, facts, load_handwritten(HANDWRITTEN_DIR))
+    for w in warnings:
+        typer.echo(f"WARN {w}")
+    sha = dump_items(items, out)
+    meta = build_meta(items, version, sha, manifest.as_of)
+    out.with_suffix(".meta.json").write_text(meta.model_dump_json(indent=2) + "\n")
+    typer.echo(f"Wrote {len(items)} items to {out}: {meta.by_category}")
+
+
+@dataset_app.command("validate")
+def dataset_validate(
+    version: Annotated[str, typer.Option()] = "v1",
+    with_chunks: Annotated[bool, typer.Option(help="Also check answerability vs chunks")] = True,
+) -> None:
+    """Dataset QA: structure, traceability to the manifest, answerability in the corpus."""
+    from filingsqa.evaluation.dataset import DatasetMeta, file_sha256, load_items
+    from filingsqa.evaluation.dataset_qa import check_dataset
+
+    path = _dataset_path(version)
+    meta = DatasetMeta.model_validate_json(path.with_suffix(".meta.json").read_text())
+    if file_sha256(path) != meta.sha256:
+        typer.echo(f"ERROR {path} was modified after release (sha256 mismatch)")
+        raise typer.Exit(1)
+    chunks = load_chunks(CHUNKS_PATH) if with_chunks and CHUNKS_PATH.exists() else None
+    report = check_dataset(load_items(path), Manifest.load(MANIFEST_PATH), chunks)
+    for w in report.warnings:
+        typer.echo(f"WARN  {w}")
+    for e in report.errors:
+        typer.echo(f"ERROR {e}")
+    typer.echo(f"{len(report.errors)} errors, {len(report.warnings)} warnings")
+    if not report.ok:
+        raise typer.Exit(1)
+
+
+@dataset_app.command("check-handwritten")
+def dataset_check_handwritten() -> None:
+    """Schema-validate the hand-written source files (works without SEC data)."""
+    from filingsqa.evaluation.builder import load_handwritten
+    from filingsqa.evaluation.dataset_qa import check_dataset
+
+    items = load_handwritten(HANDWRITTEN_DIR)
+    empty = Manifest(as_of=date.today(), filings=[])
+    report = check_dataset(items, empty, min_per_category={})
+    errors = [e for e in report.errors if "source" not in e]  # sources resolve only at build
+    for e in errors:
+        typer.echo(f"ERROR {e}")
+    typer.echo(f"{len(items)} hand-written items OK" if not errors else f"{len(errors)} errors")
+    if errors:
+        raise typer.Exit(1)
+
+
 if __name__ == "__main__":
     app()

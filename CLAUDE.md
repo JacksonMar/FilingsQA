@@ -42,7 +42,8 @@ metrics. GitHub Actions.
 
 ## Layout
 - `src/filingsqa/` — application (edgar, ingest, index, rag, llm, api, cli)
-- `eval/` — datasets (versioned JSONL), generators, metrics, thresholds, runner
+- `src/filingsqa/evaluation/` — eval code: dataset schema, XBRL generators, dataset QA, metrics, runner
+- `eval/` — data only: `datasets/` (hand-written sources + immutable `golden_vN.jsonl`), thresholds, reports
 - `tests/` — unit / integration / fixtures (small HTML/JSON snippets)
 - `docs/` — DECISIONS.md, BUGS_FOUND.md, ARCHITECTURE.md
 

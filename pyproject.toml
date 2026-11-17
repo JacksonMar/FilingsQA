@@ -56,7 +56,7 @@ select = [
 ignore = ["ANN401"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["ANN"]
+"tests/**" = ["ANN", "E501"]  # long literal rows in test tables are clearer unwrapped
 
 [tool.mypy]
 python_version = "3.12"

@@ -199,3 +199,48 @@ output schema, effort) and on refusal/truncation handling.
 **Alternatives.** HTTP-level mocking of the Anthropic API (couples tests to SDK internals);
 in-memory Qdrant (`:memory:` mode does not implement everything the server does, e.g. it is not
 the thing we deploy).
+
+## ADR-019: Golden dataset format and versioning
+**Context.** The dataset is the reference the bot is judged against; it must be reviewable,
+diffable and impossible to change silently.
+**Decision.** JSONL, one `GoldenItem` per line, pydantic schema with `extra="forbid"` and
+cross-field validators (an answerable item needs numbers/key facts/answer; injection items need the
+poisoned document; generated items are verified by construction). Expected behavior uses the same
+vocabulary as the bot's `answer_type`, so the "did it refuse / say I don't know" check is a plain
+comparison. Released versions (`golden_vN.jsonl`) are immutable: written sorted by id, with a
+`.meta.json` holding the sha256; `dataset validate` fails on any edit. Hand-written items live in
+`eval/datasets/handwritten/` and are merged at build time; their sources say "AAPL 10-K Item 1A"
+and are pinned to the manifest accession during the build. Eval code lives in
+`src/filingsqa/evaluation/` (typed, linted, tested like the app); `eval/` holds data only.
+**Alternatives.** YAML (nicer to hand-edit, worse to diff line-by-line and to stream); a database
+(overkill); mutable single file (no way to compare eval runs across dataset changes).
+
+## ADR-020: Numeric ground truth from XBRL companyfacts
+**Context.** Numeric questions need official values, generated without hand-typing.
+**Decision.** For each pinned filing, take the value of a metric **as reported in that filing**
+(`accn` = filing accession) for the filing's own period end. Periods are classified by their own
+start/end dates (annual 340–380 days, quarter 80–100 days, instant), never by the `fy`/`fp`
+fields, which describe the filing, not the value — this is what excludes 6/9-month YTD values in
+10-Qs. Tags are tried in priority order (`Revenues` → `RevenueFromContractWithCustomer…`). If one
+filing reports two different values for the same tag and period, the metric is skipped
+(ambiguous ground truth is worse than none). 10-K comparatives (prior fiscal year) become separate
+"prior_year_comparative" items. Tolerances: 1% relative for USD amounts (accepts "$130.5 billion"
+for $130,497M), ±0.01 absolute for EPS. Generated categories: numeric, cross-company comparison,
+YoY change (multi-hop), fiscal-vs-calendar trap, future / out-of-corpus period, latest quarter,
+false premise ("why did revenue double?" only when it did not).
+**Alternatives.** "Latest value for the period" from any filing (can silently pick a later
+restatement that is not in our corpus); `frames` API (calendar-aligned, wrong for fiscal years);
+hand-typed numbers (error-prone, not scalable).
+
+## ADR-021: Dataset QA — testing the test data
+**Context.** A wrong golden item creates a false bug and erodes trust in the whole eval.
+**Decision.** `dataset validate` checks: duplicate ids/questions, category coverage, every number
+and source pinned to a manifest filing, DEI fiscal period (from the HTML) equals the XBRL fiscal
+period for the same accession, and **answerability**: the expected number must appear (in any
+of its table formats: millions / thousands / raw) in the expected sections' chunks — error if it
+is nowhere in the filing, warning if only outside the expected sections. Hand-written key facts
+are checked word-by-word against the expected sections (warning), and unverified hand-written
+items are listed for human review. This separates "the bot is wrong" from "the data/ingestion is
+wrong" before any LLM money is spent.
+**Alternatives.** Trust the generator (no independent check); LLM-verify items (circular: the
+thing under test grading its own reference).
