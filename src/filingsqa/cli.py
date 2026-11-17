@@ -11,7 +11,12 @@ from filingsqa.companies import COMPANIES
 from filingsqa.config import get_settings
 from filingsqa.edgar.client import EdgarClient, submissions_url
 from filingsqa.edgar.manifest import Manifest, parse_submissions, select_filings
-from filingsqa.ingest.pipeline import build_chunks, download_companyfacts, download_filings
+from filingsqa.ingest.pipeline import (
+    build_chunks,
+    download_companyfacts,
+    download_filings,
+    load_chunks,
+)
 
 app = typer.Typer(help="FilingsQA: question answering over SEC filings.", no_args_is_help=True)
 
@@ -68,6 +73,44 @@ def ingest(
         flag = " WARN" if r.warnings else ""
         typer.echo(f"{r.ticker:5} {r.form:5} {r.period:12} {r.n_chunks:5} chunks{flag}")
     typer.echo(f"Total {sum(r.n_chunks for r in reports)} chunks -> {out}")
+
+
+@app.command()
+def index(chunks: Path = CHUNKS_PATH) -> None:
+    """(Re)create the Qdrant collection and index all chunks (dense + BM25)."""
+    from filingsqa.rag.factory import build_store
+
+    store = build_store(get_settings())
+    store.recreate_collection()
+    n = store.index(load_chunks(chunks))
+    typer.echo(f"Indexed {n} chunks into collection {store.collection!r}")
+
+
+@app.command()
+def ask(
+    question: str,
+    ticker: Annotated[list[str] | None, typer.Option("--ticker", "-t")] = None,
+    show_chunks: bool = False,
+) -> None:
+    """Ask a question from the command line."""
+    from filingsqa.rag.factory import build_pipeline
+    from filingsqa.rag.schemas import AskRequest
+
+    response = build_pipeline(get_settings()).ask(AskRequest(question=question, tickers=ticker))
+    typer.echo(f"[{response.answer_type}] {response.answer}\n")
+    for c in response.citations:
+        typer.echo(f"  [{c.doc_id}] {c.ticker} {c.form} {c.period_label} - {c.section_title}")
+        typer.echo(f"       {c.source_url}")
+    if response.invalid_citation_ids:
+        typer.echo(f"  ! invalid citation ids: {response.invalid_citation_ids}")
+    if show_chunks:
+        for ch in response.retrieved_chunks:
+            typer.echo(f"\n--- [{ch.doc_id}] {ch.chunk_id} score={ch.score:.4f}\n{ch.text[:500]}")
+    m = response.meta
+    typer.echo(
+        f"\n(model={m.model} prompt={m.prompt_version} cached={m.llm_cached} "
+        f"tokens={m.input_tokens}/{m.output_tokens} latency={m.latency_ms}ms)"
+    )
 
 
 if __name__ == "__main__":

@@ -120,3 +120,82 @@ layout-table headings, split `$`/`)` cells, page footers). Each quirk found in r
 a minimal real-derived fixture + regression test.
 **Alternatives.** Commit full real filings as fixtures (MBs of HTML, slow tests, hard to see what
 is being tested).
+
+## ADR-013: No `temperature`; managing non-determinism differently (amends ADR-004)
+**Context.** The plan was temperature 0 for reproducible answers and non-flaky CI gates. Current
+Claude models (Haiku 5.5 as generator, Sonnet 5.5 as judge) reject non-default sampling
+parameters with HTTP 400, and API version `2026-10-21` rejects `temperature` on every model.
+**Decision.** No sampling parameters anywhere. Variance is controlled by: (1) structured output
+(JSON schema) so the *shape* of the answer is fixed; (2) `effort` set explicitly (`low` for the
+generator, `medium` for the judge) and logged; (3) a disk cache keyed by provider, model, effort,
+prompts and schema, so repeated dev/eval runs replay identical answers; (4) CI thresholds with
+margin and per-category aggregates rather than per-item gates; (5) if flakiness shows up, run the
+smoke subset N times and gate on the mean — measured, not assumed.
+**Alternatives.** Pin an older model that still accepts temperature (stale, and API version
+`2026-10-21` removes the parameter anyway). Replay-only CI (rejected in ADR-004).
+**Interview note.** Even temperature 0 was never fully deterministic on hosted LLMs; designing the
+gate for variance is the robust approach either way.
+
+## ADR-014: Qdrant layout and hybrid retrieval
+**Context.** Financial questions mix semantic phrasing ("how much did sales grow") with exact
+tokens (line-item names, "Item 1A", tickers, numbers) that dense embeddings handle poorly.
+**Decision.** One Qdrant point per chunk with two named vectors: `dense` (bge-small, cosine) and
+`bm25` (fastembed `Qdrant/bm25` term frequencies, IDF applied by Qdrant via `Modifier.IDF`).
+Both embed `context + text`, so company/period/section words are searchable. A query runs two
+prefetches (dense, sparse; 40 candidates each) fused with Reciprocal Rank Fusion in Qdrant, then
+returns top 8. Point IDs are `uuid5(chunk_id)` → re-indexing is an idempotent upsert. Payload
+indexes on ticker, fiscal_year, fiscal_period, form, section_key, accession, chunk_id.
+**Alternatives.** Dense only (misses exact terms); weighted score sum (scores of different
+retrievers are not on the same scale, weights need tuning — RRF only uses ranks); a cross-encoder
+re-ranker (better quality, more latency/complexity — a candidate experiment for the eval suite).
+**Note.** Embedding models are downloaded from Hugging Face on first use; tests never need them.
+
+## ADR-015: Which metadata filters are automatic
+**Context.** Filters reduce noise, but a wrong filter silently hides the right chunk.
+**Decision.** Tickers are auto-detected from the question (tickers and company aliases, word
+boundaries) and become a filter. Fiscal year/period are **not** auto-detected: a FY2025 10-K also
+contains FY2024/FY2023 comparatives, and "fiscal 2024" ≠ calendar 2024. They are filters only when
+the caller passes them explicitly. Explicit unknown tickers are kept in the filter (→ no hits →
+"insufficient context" without an LLM call) instead of being dropped, which would silently search
+every company. With several tickers, retrieval runs once per ticker and interleaves results, so a
+comparison question always sees both companies.
+**Alternatives.** LLM-based query parsing (extra latency, cost and a new failure mode to test);
+regex year filters (wrong on comparatives and fiscal calendars).
+
+## ADR-016: Structured answer + numbered documents for citations
+**Context.** Citations must be machine-checkable (Phase 4: "cited chunk exists and contains the
+number").
+**Decision.** Retrieved chunks are sent as `<document id="n" ...>` with ticker, form, fiscal
+period, period end and section as attributes. The model returns JSON `{answer_type, answer,
+cited_documents}` (structured outputs) and puts `[n]` markers after claims. Code maps `n` back to
+chunk IDs and URLs; out-of-range ids are returned in `invalid_citation_ids` instead of being
+trusted. `<`/`>` in document text and in the question are escaped so content cannot close our tags
+(prompt-injection hardening). `PROMPT_VERSION` is logged with every answer and is part of the cache
+key.
+**Alternatives.** Anthropic's native citations feature (cites character spans, nice, but is
+incompatible with structured outputs and harder to compare across providers); free text with
+regex parsing of "Sources:" (fragile).
+
+## ADR-017: Guardrails live in the prompt first; code guardrails only when the eval proves a need
+**Context.** Investment-advice refusals, "I don't know" behavior and injection resistance could be
+enforced with deterministic pre-filters.
+**Decision.** For v1 these behaviors are prompt rules only, so the eval suite measures the model's
+real behavior. A code guardrail is added only after the eval shows a failure; each such fix is
+logged in `docs/BUGS_FOUND.md` with before/after numbers. Exception: when retrieval returns
+nothing, the pipeline answers "insufficient context" without calling the LLM (no grounding = no
+generation). Provider refusals (`stop_reason == "refusal"`) become `answer_type="model_refusal"`.
+**Alternatives.** Keyword blocklist for advice up front (hides what the model would do; also
+over-blocks factual questions like "what did management say about buybacks").
+
+## ADR-018: Test doubles for embeddings and LLM
+**Context.** Unit tests must not download models or call APIs; Qdrant behavior must still be
+tested for real.
+**Decision.** `tests/fakes.py`: hashing bag-of-words dense and sparse embedders (deterministic,
+lexical similarity), a scripted `FakeLLM` and a `FakeSearchBackend`. Unit tests use fakes only.
+Integration tests (`-m integration`, separate CI job with a Qdrant service container) run the real
+Qdrant collection layout, filters and RRF with the fake embedders. The Anthropic client is tested
+by stubbing `messages.create` and asserting on the request we send (no `temperature`, structured
+output schema, effort) and on refusal/truncation handling.
+**Alternatives.** HTTP-level mocking of the Anthropic API (couples tests to SDK internals);
+in-memory Qdrant (`:memory:` mode does not implement everything the server does, e.g. it is not
+the thing we deploy).

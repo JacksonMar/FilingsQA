@@ -24,4 +24,25 @@ jobs:
         run: make typecheck
       - name: Unit tests
         run: make test
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.20.0
+        ports:
+          - 6333:6333
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - name: Wait for Qdrant
+        run: |
+          for i in $(seq 1 30); do curl -sf http://localhost:6333/healthz && exit 0; sleep 1; done
+          exit 1
+      - name: Integration tests (real Qdrant, fake embedders)
+        run: make test-integration
   # eval-smoke job (paths-filtered: src/, prompts, eval/datasets) is added in Phase 5.

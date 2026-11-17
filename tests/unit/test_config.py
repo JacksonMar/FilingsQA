@@ -7,7 +7,7 @@ from filingsqa.config import Settings
 def test_defaults_load_without_env():
     settings = Settings()
 
-    assert settings.llm_temperature == 0.0
+    assert settings.llm_effort == "low"
     assert settings.anthropic_api_key is None
 
 

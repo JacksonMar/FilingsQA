@@ -23,7 +23,8 @@ QA = Question Answering + Quality Assurance. Portfolio project for AI/ML QA role
 - Unit tests: no network, LLM always mocked. Network tests are marked `network`,
   Qdrant tests are marked `integration`.
 - Keep LLM costs low: disk cache for LLM responses in dev, small eval subsets in CI,
-  temperature 0, thresholds with margin to avoid flaky gates.
+  LLM response cache, thresholds with margin to avoid flaky gates. No `temperature`: current
+  Claude models reject non-default sampling params (ADR-013).
 - Generator and judge LLMs are configured separately (generator: Haiku, judge: Sonnet).
 - Filings and ground truth are **frozen**: accession numbers in a committed manifest, XBRL
   expected values embedded in the golden dataset. Raw HTML is never committed.

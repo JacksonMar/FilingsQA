@@ -38,11 +38,12 @@ AS_OF ?= 2026-11-17
 manifest: ## Pin latest 10-K + two 10-Q per company as of AS_OF (commit the result)
 	uv run filingsqa build-manifest --as-of $(AS_OF)
 
-ingest: ## Download pinned filings + XBRL facts, parse and chunk to data/processed/
+ingest: ## Download pinned filings + XBRL facts, parse, chunk and index into Qdrant
 	uv run filingsqa ingest
+	uv run filingsqa index
 
-serve: ## Run FastAPI server (Phase 2)
-	@echo "Not implemented yet (Phase 2)"; exit 1
+serve: ## Run the API on http://localhost:8000 (docs at /docs)
+	uv run uvicorn filingsqa.api.app:create_app --factory --port 8000
 
 eval: ## Full evaluation run (Phase 4)
 	@echo "Not implemented yet (Phase 4)"; exit 1
