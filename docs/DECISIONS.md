@@ -333,3 +333,22 @@ optimistic; smoke is a regression gate, the nightly run is the quality measureme
 and golden dataset are committed; until then a scheduled run could only fail its prerequisites
 check. Actions were bumped to Node 24 majors (checkout v6, setup-uv v7, cache v5,
 upload-artifact v6) after checking their `action.yml` for the inputs we use.
+
+## ADR-027: Hybrid section detection (parser timebox outcome; amends ADR-006/008)
+**Context.** First run on the 15 real filings: the differential test disagreed with edgartools on
+9. Two causes were bugs in our parser and were fixed (MSFT running page headers, signatures glued
+to the last Item; BUG-2, BUG-3). The third is structural: JPMorgan puts the formal Form 10-K/10-Q
+items first and the real MD&A and financial statements later, linked from the table of contents
+(BUG-4). Solving that is a feature of its own, beyond the parser timebox.
+**Decision.** Hybrid. Our parser splits every filing; edgartools (now a runtime dependency)
+parses it too, and the *core* sections (10-K Items 7 and 8; 10-Q Part I Items 1 and 2) are
+compared with the differential test's size rule. Only on a core mismatch are section boundaries
+taken from edgartools: the start text of each of its sections is located among our blocks
+(alphanumeric signature match; a repeated start line is disambiguated by the next line and by
+canonical Item order). Blocks, table rendering and chunking remain ours; the ingest report
+records `section_source` per filing. If edgartools fails or a core section cannot be anchored,
+our split is kept with a warning. Result on the corpus: 12 filings use our sections, the 3 JPM
+filings use edgartools boundaries; the differential test agrees on the other 12.
+**Alternatives.** edgartools for everything (simplest, but loses our tested table handling and the
+oracle relationship); our parser for everything (needs a cross-reference/TOC-link resolver: weeks,
+not evenings). Cost: ingestion takes ~70 s instead of ~14 s for 15 filings.

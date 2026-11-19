@@ -28,7 +28,7 @@ def test_annual_revenue_item(items):
     assert (num.value, num.unit, num.fiscal_year, num.fiscal_period) == (400e9, "USD", 2025, "FY")
     assert num.xbrl.tag == "Revenues"
     assert "$400,000 million" in item.expected_answer
-    assert item.expected_sources[0].section_keys == ("item_8", "item_7")
+    assert item.expected_sources[0].section_keys == ("item_8", "item_7", "item_15")
 
 
 def test_prior_year_comparative_comes_from_latest_10k(items):

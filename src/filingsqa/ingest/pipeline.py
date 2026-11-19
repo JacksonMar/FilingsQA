@@ -13,6 +13,7 @@ from filingsqa.ingest.chunking import ChunkingConfig, chunk_sections
 from filingsqa.ingest.html_to_text import parse_filing_html
 from filingsqa.ingest.metadata import build_filing_meta
 from filingsqa.ingest.models import Chunk
+from filingsqa.ingest.oracle_sections import resolve_sections
 from filingsqa.ingest.sections import split_sections
 
 log = logging.getLogger(__name__)
@@ -24,21 +25,25 @@ class FilingReport:
     form: str
     accession: str
     period: str
+    section_source: str = "own"  # "own" parser or "edgartools" boundaries (ADR-027)
     sections: dict[str, int] = field(default_factory=dict)  # section_key -> chunk count
     n_chunks: int = 0
     warnings: list[str] = field(default_factory=list)
 
 
 def process_filing(
-    ref: FilingRef, html: str, config: ChunkingConfig | None = None
+    ref: FilingRef, html: str, config: ChunkingConfig | None = None, use_oracle: bool = True
 ) -> tuple[list[Chunk], FilingReport]:
     """Pure function: no I/O. The whole parse -> chunk path is testable on a fixture."""
     parsed = parse_filing_html(html)
     meta = build_filing_meta(ref, parsed.dei)
     split = split_sections(parsed.blocks, ref.form)
+    source = "own"
+    if use_oracle:
+        split, source = resolve_sections(html, parsed.blocks, split, ref.form)
     chunks = chunk_sections(split.sections, meta, config)
 
-    report = FilingReport(ref.ticker, ref.form, ref.accession, meta.period_label)
+    report = FilingReport(ref.ticker, ref.form, ref.accession, meta.period_label, source)
     for chunk in chunks:
         report.sections[chunk.section_key] = report.sections.get(chunk.section_key, 0) + 1
     report.n_chunks = len(chunks)
