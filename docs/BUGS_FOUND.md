@@ -20,6 +20,12 @@ the development sandbox so far). Entries will be added from the first real eval 
 4. Fix it, add a regression test (unit test or golden item), re-run the affected category, and
    record before -> after scores in the table above.
 
+## Ingestion defects found on real data
+
+| ID | Symptom | Detected by | Root cause | Fix | Regression test |
+|----|---------|-------------|------------|-----|-----------------|
+| BUG-1 | Ingestion of MSFT 10-Q `0001193125-26-191507` stopped: DEI `DocumentType` read as `'10- Q'` | Fail-loudly consistency check in `build_filing_meta` (DEI form vs manifest form) | The filing writes the value as `<span>10-</span><span>Q</span>`; `get_text(" ")` put a space between every pair of elements, unlike a browser, which joins inline elements. The same function was used for table cells | `_rendered_text()`: inline children joined as-is, block children and `<br>` separated by a space; used for DEI facts and table cells | `test_dei_value_split_across_inline_spans`, `test_table_cell_inline_spans_are_not_split`, `test_table_cell_block_children_stay_separated` |
+
 ## Defects in the eval suite itself
 
 Found while building the suite. Logged because a wrong eval produces false bug reports.
