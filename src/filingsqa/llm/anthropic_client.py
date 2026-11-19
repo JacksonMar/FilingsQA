@@ -19,10 +19,9 @@ class AnthropicLLM:
         return {"provider": "anthropic", "model": self._model, "effort": self._effort}
 
     def complete(self, request: LLMRequest) -> LLMResponse:
-        output_config: Any = {
-            "effort": self._effort,
-            "format": {"type": "json_schema", "schema": request.json_schema},
-        }
+        output_config: Any = {"effort": self._effort}
+        if request.json_schema is not None:
+            output_config["format"] = {"type": "json_schema", "schema": request.json_schema}
         try:
             response = self._client.messages.create(
                 model=self._model,

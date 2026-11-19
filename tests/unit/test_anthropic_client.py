@@ -78,3 +78,13 @@ def test_identity_feeds_cache_key():
         "model": "m",
         "effort": "low",
     }
+
+
+def test_free_text_request_has_no_format(llm_and_calls):
+    llm, calls, replies = llm_and_calls
+    replies.append(_response(text="plain"))
+
+    resp = llm.complete(LLMRequest(system="s", user="u", json_schema=None))
+
+    assert calls[0]["output_config"] == {"effort": "low"}
+    assert resp.text == "plain"

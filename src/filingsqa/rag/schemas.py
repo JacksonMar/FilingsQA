@@ -38,6 +38,7 @@ class RetrievedChunk(BaseModel):
     score: float
     ticker: str
     form: str
+    accession: str
     period_label: str
     section_key: str
     section_title: str

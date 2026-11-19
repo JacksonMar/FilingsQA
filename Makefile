@@ -50,8 +50,8 @@ dataset: ## Build golden dataset VERSION (needs make ingest) and validate it
 serve: ## Run the API on http://localhost:8000 (docs at /docs)
 	uv run uvicorn filingsqa.api.app:create_app --factory --port 8000
 
-eval: ## Full evaluation run (Phase 4)
-	@echo "Not implemented yet (Phase 4)"; exit 1
+eval: ## Full eval (deterministic + LLM judge) on golden VERSION; report in eval/reports/
+	uv run filingsqa eval run --version $(VERSION) --subset full --judge
 
-eval-smoke: ## Small eval subset used as CI quality gate (Phase 4)
-	@echo "Not implemented yet (Phase 4)"; exit 1
+eval-smoke: ## ~20-item stratified subset, deterministic metrics only: the CI quality gate
+	uv run filingsqa eval run --version $(VERSION) --subset smoke --no-judge

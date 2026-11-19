@@ -1,0 +1,42 @@
+# Quality gates: minimum MEAN score per scope ("overall" or a category) and metric.
+# A metric with no applicable items in a run is "skipped", not failed (e.g. judge metrics when
+# the run used --no-judge).
+#
+# PROVISIONAL values, chosen before the first real run. Calibrate after the first full run on
+# real data (ADR-024): set each gate a margin below the measured baseline, never above it.
+
+full:
+  overall:
+    behavior_match: 0.85
+    citation_validity: 0.85
+    faithfulness: 0.80
+    answer_relevancy: 0.75
+    hallucination_free: 0.80
+  numeric:
+    numeric_accuracy: 0.80
+    period_mentioned: 0.80
+    recall_at_k: 0.80
+    fiscal_period_correct: 0.75
+  qualitative:
+    recall_at_k: 0.70
+    key_facts_coverage: 0.60
+  comparison:
+    numeric_accuracy: 0.70
+  temporal:
+    behavior_match: 0.75
+  adversarial:
+    behavior_match: 0.85
+    forbidden_phrases: 1.0
+
+# Smoke (~20 items on every PR): same metrics, wider margin. With n=6, one wrong item moves a
+# mean by ~0.17, so gates here catch regressions, not small drifts.
+smoke:
+  overall:
+    behavior_match: 0.70
+    citation_validity: 0.70
+  numeric:
+    numeric_accuracy: 0.65
+    recall_at_k: 0.65
+  adversarial:
+    behavior_match: 0.65
+    forbidden_phrases: 1.0

@@ -244,3 +244,66 @@ items are listed for human review. This separates "the bot is wrong" from "the d
 wrong" before any LLM money is spent.
 **Alternatives.** Trust the generator (no independent check); LLM-verify items (circular: the
 thing under test grading its own reference).
+
+## ADR-022: Deterministic metrics first, and how numbers are matched
+**Context.** Most of what matters here (right number, right period, refusal, citations) can be
+checked without an LLM, which is cheaper, reproducible and explainable.
+**Decision.** Per item, applied only where they make sense:
+`behavior_match` (expected behavior vs bot `answer_type`: covers refusals for advice and "I don't
+know" for unanswerable items), `numeric_accuracy` (share of expected numbers found in the answer
+within tolerance), `period_mentioned` (fiscal year, and quarter, of every expected number appears),
+`citation_validity` (no invalid ids, at least one citation, and every correctly stated number
+occurs in a cited chunk), `forbidden_phrases` (injection payloads), `key_facts_coverage`.
+Retrieval metrics use section labels instead of an LLM: `recall_at_k` (share of expected sources
+retrieved), `mrr`, rank-aware `contextual_precision`, and `context_has_numbers` (contextual recall
+for numbers: is the answer even present in the retrieved text?). Injected chunks are excluded.
+Number matching: parse amounts with scale words ("$130.5 billion", "$1.2B"); a value without a
+scale word is also tried as "in millions" (copied table values). A value that matches only after
+×1000 or ÷1000 is reported as `unit_error` (millions/billions mix-up), listed separately in the
+report. Signs are compared on absolute values ("net loss of $1.2B" has no minus sign).
+**Alternatives.** Exact string match (fails on "$130.5 billion" vs "130,497"); LLM-judged numeric
+correctness (costly, non-deterministic, and a judge can be fooled by confident wrong numbers).
+
+## ADR-023: LLM judge through DeepEval with our own judge model
+**Context.** Faithfulness, relevancy and "states the fiscal period correctly" need judgement.
+**Decision.** DeepEval metrics (Faithfulness, AnswerRelevancy, Hallucination, and two G-Evals:
+`fiscal_period_correct` and `answer_correctness` with explicit evaluation steps, so no extra LLM
+call to invent steps) run with a `JudgeAdapter` around our `LLMClient` (Sonnet, effort medium,
+disk-cached, separate from the generator). The adapter sends free text; DeepEval parses the JSON it
+asked for. Judge metrics run only on real answers with context; judge failures are recorded per
+item, never crash the run. DeepEval telemetry is disabled. CI smoke runs **without** the judge
+(deterministic gate); the full nightly run uses it.
+**Found during development.** DeepEval 4.x flipped `HallucinationMetric` to "higher is better"
+(score = share of contexts the answer agrees with; threshold is a minimum). Code written for the
+old polarity silently inverts the meaning. A scripted-judge unit test now pins the direction.
+**Alternatives.** Hand-rolled judge prompts (more control, less standard; may replace a metric if
+judge agreement is poor); Anthropic citations-based faithfulness (incompatible with our structured
+output).
+
+## ADR-024: Runner, quality gates and reports
+**Context.** Eval results must be comparable across runs and able to fail CI.
+**Decision.** `filingsqa eval run` asks every golden question through the real pipeline
+(sequentially: simpler, cache-friendly, gentle on rate limits), computes metrics, aggregates mean
+and pass rate per category and overall, and checks `eval/thresholds.yaml` (profiles `full` and
+`smoke`; gates on category means, a metric with no applicable items is "skipped"). Outputs
+`results.json` (everything, including bot responses) and `report.md` (gates, per-category table,
+unit mix-ups, failures). Each run records dataset version + sha, prompt version, generator and
+judge models with effort, git commit and LLM cache hits. Prompt-injection items run with an
+`InjectingBackend` that puts the poisoned chunk at rank 1. Smoke subset: stratified, first N per
+category by `sha1(id)` (stable when items are added). Thresholds are provisional until calibrated
+on the first full real run; smoke thresholds are looser because with n=6 one item moves a mean
+by ~0.17.
+**Alternatives.** pytest-per-item with DeepEval's `assert_test` (nice output, but a single failing
+item fails the run, and per-category gating is awkward); parallel execution (later, if runtime
+matters).
+
+## ADR-025: Measuring judge reliability
+**Context.** An LLM judge is itself a model that can be wrong; its scores are only as useful as
+its agreement with humans.
+**Decision.** Export a deterministic sample of judged answers for a metric **without** the judge's
+verdict (avoids anchoring), a human labels pass/fail, then compute accuracy, Cohen's kappa
+(agreement corrected for chance), false passes (judge too lenient) and false fails (too strict).
+Labels are tied to a hash of the exact answer text, so a label never applies to a changed answer.
+A judge metric with kappa below ~0.6 should not gate CI.
+**Alternatives.** Raw percent agreement only (inflated when most answers pass); a second LLM as
+"ground truth" (measures model-model agreement, not correctness).

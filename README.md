@@ -6,7 +6,7 @@ A RAG chatbot that answers questions about US public companies using their SEC f
 and, more importantly, an evaluation and test suite that measures how much you can trust it.
 Numeric answers are checked automatically against official SEC XBRL data.
 
-**Status:** Phase 3 (golden dataset). See `docs/DECISIONS.md` for design decisions.
+**Status:** Phase 4 (evaluation suite). See `docs/DECISIONS.md` for design decisions.
 
 ## Quick start
 
@@ -23,6 +23,10 @@ make up                          # start Qdrant
 make ingest                      # ... then index into Qdrant
 uv run filingsqa ask "What was NVIDIA's revenue in fiscal 2025?"
 make serve                       # POST /ask on http://localhost:8000 (OpenAPI docs at /docs)
+
+make dataset VERSION=v1          # build + validate the golden dataset
+make eval-smoke                  # ~20 items, deterministic metrics, quality gate
+make eval                        # full run with LLM judge -> eval/reports/<run>/report.md
 ```
 
 ## Disclaimer

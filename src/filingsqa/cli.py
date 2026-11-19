@@ -189,5 +189,107 @@ def dataset_check_handwritten() -> None:
         raise typer.Exit(1)
 
 
+eval_app = typer.Typer(help="Run the evaluation suite.", no_args_is_help=True)
+app.add_typer(eval_app, name="eval")
+THRESHOLDS_PATH = Path("eval/thresholds.yaml")
+REPORTS_DIR = Path("eval/reports")
+
+
+@eval_app.command("run")
+def eval_run(
+    version: Annotated[str, typer.Option(help="Golden dataset version")] = "v1",
+    subset: Annotated[str, typer.Option(help="full | smoke")] = "full",
+    judge: Annotated[bool, typer.Option(help="Also run LLM-judge metrics")] = True,
+    limit: Annotated[int | None, typer.Option(help="Only the first N items (debugging)")] = None,
+    category: Annotated[str | None, typer.Option(help="Only this category")] = None,
+    out: Annotated[Path | None, typer.Option(help="Output dir (default eval/reports/<ts>)")] = None,
+) -> None:
+    """Ask every golden question, score the answers, write results.json + report.md, gate."""
+    from datetime import datetime
+
+    from filingsqa.evaluation.dataset import DatasetMeta, load_items
+    from filingsqa.evaluation.report import save_run
+    from filingsqa.evaluation.runner import EvalRunner, smoke_subset
+    from filingsqa.evaluation.thresholds import load_thresholds
+    from filingsqa.llm.cache import CachingLLM
+    from filingsqa.llm.factory import make_llm
+    from filingsqa.rag.factory import build_pipeline
+    from filingsqa.rag.prompts import PROMPT_VERSION
+
+    settings = get_settings()
+    path = _dataset_path(version)
+    items = load_items(path)
+    if subset == "smoke":
+        items = smoke_subset(items)
+    if category:
+        items = [i for i in items if i.category == category]
+    if limit:
+        items = items[:limit]
+
+    pipeline = build_pipeline(settings)
+    judge_suite = None
+    if judge:
+        from filingsqa.evaluation.metrics.judge import JudgeSuite
+
+        judge_suite = JudgeSuite(make_llm(settings, "judge"))
+    meta = DatasetMeta.model_validate_json(path.with_suffix(".meta.json").read_text())
+    runner = EvalRunner(
+        pipeline,
+        judge_suite,
+        metadata={
+            "dataset_version": version,
+            "dataset_sha256": meta.sha256[:12],
+            "subset": subset,
+            "prompt_version": PROMPT_VERSION,
+            "generator": f"{settings.llm_model} (effort={settings.llm_effort})",
+            "judge_model": f"{settings.judge_model} (effort={settings.judge_effort})"
+            if judge
+            else None,
+        },
+    )
+    run = runner.run(items, load_thresholds(THRESHOLDS_PATH, subset))
+    llm = pipeline.generator.llm
+    if isinstance(llm, CachingLLM):
+        run.metadata["llm_cache"] = f"hits={llm.hits} misses={llm.misses}"
+    out_dir = out or REPORTS_DIR / f"{datetime.now():%Y%m%d-%H%M%S}-{version}-{subset}"
+    json_path, md_path = save_run(run, out_dir)
+    typer.echo(md_path.read_text().split("## Mean score")[0])
+    typer.echo(f"Results: {json_path}\nReport:  {md_path}")
+    if not run.passed:
+        raise typer.Exit(1)
+
+
+@eval_app.command("label-sample")
+def eval_label_sample(
+    run: Annotated[Path, typer.Option(help="results.json of a judged run")],
+    metric: Annotated[str, typer.Option()] = "fiscal_period_correct",
+    n: Annotated[int, typer.Option()] = 30,
+) -> None:
+    """Export answers for human labeling (judge verdict hidden)."""
+    from filingsqa.evaluation.judge_agreement import label_sample, save_labels
+    from filingsqa.evaluation.runner import RunResult
+
+    rows = label_sample(RunResult.model_validate_json(run.read_text()), metric, n)
+    out = Path("eval/judge_agreement") / f"labels_{metric}.jsonl"
+    if out.exists():
+        raise typer.BadParameter(f"{out} exists; refusing to overwrite human labels")
+    save_labels(rows, out)
+    typer.echo(f"Wrote {len(rows)} rows to {out}; fill human_pass true/false")
+
+
+@eval_app.command("judge-agreement")
+def eval_judge_agreement(
+    run: Annotated[Path, typer.Option()],
+    labels: Annotated[Path, typer.Option()],
+) -> None:
+    """Agreement and Cohen's kappa between the LLM judge and human labels."""
+    from filingsqa.evaluation.judge_agreement import compute_agreement, load_labels
+    from filingsqa.evaluation.runner import RunResult
+
+    a = compute_agreement(RunResult.model_validate_json(run.read_text()), load_labels(labels))
+    typer.echo(f"n={a.n} accuracy={a.accuracy:.2f} kappa={a.kappa:.2f} skipped={a.skipped}")
+    typer.echo(f"judge too lenient (false pass)={a.fp}  judge too strict (false fail)={a.fn}")
+
+
 if __name__ == "__main__":
     app()

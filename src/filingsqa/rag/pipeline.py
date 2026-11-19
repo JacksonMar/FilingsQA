@@ -33,6 +33,7 @@ def _retrieved(hits: list[SearchHit]) -> list[RetrievedChunk]:
             score=h.score,
             ticker=h.payload["ticker"],
             form=h.payload["form"],
+            accession=h.payload["accession"],
             period_label=h.payload["period_label"],
             section_key=h.payload["section_key"],
             section_title=h.payload["section_title"],

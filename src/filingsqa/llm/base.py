@@ -16,7 +16,9 @@ class LLMRefusalError(LLMError):
 class LLMRequest:
     system: str
     user: str
-    json_schema: dict[str, Any]  # structured output: the reply must be JSON matching this schema
+    # Structured output: the reply must be JSON matching this schema. None = free text
+    # (used by the DeepEval judge, whose prompts ask for JSON and which parses it itself).
+    json_schema: dict[str, Any] | None
     max_tokens: int = 4096
 
     def cache_payload(self) -> dict[str, Any]:
