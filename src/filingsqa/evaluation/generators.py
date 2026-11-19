@@ -22,8 +22,10 @@ from filingsqa.evaluation.numbers import format_value
 from filingsqa.evaluation.xbrl import Fact, PeriodType, find_fact, iter_facts
 
 QUARTER_WORDS = {"Q1": "first", "Q2": "second", "Q3": "third", "Q4": "fourth"}
+# Where financial figures live. Some 10-Ks (NVIDIA) put the statements under Item 15 and only
+# cross-reference them from Item 8, so Item 15 counts as a valid source too.
 SECTIONS = {
-    "10-K": ("item_8", "item_7"),
+    "10-K": ("item_8", "item_7", "item_15"),
     "10-Q": ("part1_item_1", "part1_item_2"),
 }
 CompanyFacts = dict[str, Any]

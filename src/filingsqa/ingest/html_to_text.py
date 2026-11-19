@@ -77,11 +77,29 @@ def _is_hidden(tag: Tag) -> bool:
     return "display:none" in style
 
 
+def _rendered_text(tag: Tag) -> str:
+    """Text of an element as a browser shows it: inline children are concatenated as-is,
+    block children and <br> are separated by a space.
+
+    `tag.get_text(" ")` would put a space between *every* pair of elements, which turns
+    <span>10-</span><span>Q</span> into "10- Q" (BUG-1 in docs/BUGS_FOUND.md).
+    """
+    parts: list[str] = []
+    for node in tag.descendants:
+        if isinstance(node, Comment):
+            continue
+        if isinstance(node, NavigableString):
+            parts.append(str(node))
+        elif isinstance(node, Tag) and node.name in BLOCK_TAGS:
+            parts.append(" ")
+    return "".join(parts)
+
+
 def _extract_dei(soup: BeautifulSoup) -> dict[str, str]:
     facts: dict[str, str] = {}
     for tag in soup.find_all(True, attrs={"name": _DEI_NAME}):
         name = str(tag["name"]).removeprefix("dei:")
-        value = normalize_text(tag.get_text(" "))
+        value = normalize_text(_rendered_text(tag))
         if value and name not in facts:
             facts[name] = value
     return facts
@@ -113,7 +131,7 @@ def _table_rows(table: Tag) -> list[list[str]]:
     for tr in table.find_all("tr"):
         if tr.find_parent("table") is not table:
             continue  # rows of nested tables are handled by their own table
-        cells = [td.get_text(" ") for td in tr.find_all(["td", "th"]) if not _is_hidden(td)]
+        cells = [_rendered_text(td) for td in tr.find_all(["td", "th"]) if not _is_hidden(td)]
         row = normalize_row(cells)
         if row:
             rows.append(row)

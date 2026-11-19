@@ -3,8 +3,9 @@
 Algorithm (see ADR-008):
 1. Scan text blocks (never data tables) for short lines that look like `Item 1A. Risk Factors`
    or `PART II`. Each valid Item heading becomes a *candidate*.
-2. Item headings also appear in the table of contents and in cross-references, so the same Item
-   can have several candidates. For every Item keep the candidate followed by the *largest*
+2. Consecutive candidates for the same Item (running page headers) collapse into the first one.
+   Item headings also appear in the table of contents and in cross-references, so the same Item
+   can still have several candidates. For every Item keep the candidate followed by the *largest*
    amount of text before the next candidate: a TOC entry is followed by almost nothing.
 3. The chosen headings split the document into sections. Text before the first heading is
    `front_matter`. If no heading is found at all, the whole document is one `full_document`
@@ -59,6 +60,8 @@ TEN_Q_ITEMS: dict[tuple[str, str], str] = {
     ("II", "6"): "Exhibits",
 }
 
+SIGNATURES = "signatures"
+_SIGNATURE_HEADINGS = frozenset({"SIGNATURE", "SIGNATURES"})
 FRONT_MATTER = "front_matter"
 FULL_DOCUMENT = "full_document"
 
@@ -94,9 +97,11 @@ class _Candidate:
 
 
 def _match_heading(text: str) -> tuple[str, str] | None:
-    """Return (kind, number) for 'item'/'part' headings, else None."""
+    """Return (kind, number) for 'item'/'part'/'signatures' headings, else None."""
     if len(text) > MAX_HEADING_CHARS:
         return None
+    if text.strip().upper() in _SIGNATURE_HEADINGS:
+        return "signatures", ""
     if m := _PART_RE.match(text):
         rest = m.group(2)
         if not rest or rest[0].isupper():
@@ -122,7 +127,10 @@ def _candidates(blocks: list[Block], form: str) -> list[_Candidate]:
         if heading is None:
             continue
         kind, number = heading
-        if kind == "part":
+        if kind == "signatures":
+            # Signatures and powers of attorney close the filing; keep them out of the last Item.
+            found.append(_Candidate(idx, SIGNATURES, "Signatures", 10_000))
+        elif kind == "part":
             part = number
         elif is_10q and (part, number) in TEN_Q_ITEMS:
             key = f"part{_PART_NUMBER[part]}_item_{number.lower()}"
@@ -133,8 +141,18 @@ def _candidates(blocks: list[Block], form: str) -> list[_Candidate]:
     return found
 
 
+def _collapse_runs(candidates: list[_Candidate]) -> list[_Candidate]:
+    """Consecutive candidates for the same Item are one section with running page headers
+    (e.g. "Item 7" at the top of every MD&A page): keep only the first of each run (BUG-2)."""
+    out: list[_Candidate] = []
+    for c in candidates:
+        if not out or out[-1].key != c.key:
+            out.append(c)
+    return out
+
+
 def split_sections(blocks: list[Block], form: str) -> SectionSplit:
-    candidates = _candidates(blocks, form)
+    candidates = _collapse_runs(_candidates(blocks, form))
     if not candidates:
         return SectionSplit(
             [Section(FULL_DOCUMENT, "Full document", list(blocks))],

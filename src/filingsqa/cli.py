@@ -37,6 +37,8 @@ def _setup(verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False) ->
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    for noisy in ("edgar", "httpx"):  # library chatter; our own logs stay at INFO
+        logging.getLogger(noisy).setLevel(logging.DEBUG if verbose else logging.WARNING)
 
 
 @app.command("build-manifest")

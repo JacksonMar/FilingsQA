@@ -125,3 +125,41 @@ def test_data_tables_are_never_headings():
     blocks = [Block("table", "Item 1A. Risk Factors"), *_text("body")]
 
     assert split_sections(blocks, "10-K").sections[0].key == FULL_DOCUMENT
+
+
+def test_running_page_headers_do_not_split_a_section():
+    """Regression (BUG-2): MSFT repeats "Item 7" as a page header on every page of MD&A."""
+    blocks = _text(
+        "Item 6", "ITEM 6. [RESERVED]", "PART II",
+        "Item 7", "ITEM 7. MANAGEMENT'S DISCUSSION AND ANALYSIS", "Overview " * 30,
+        "Item 7", "Metrics " * 30,
+        "Item 7", "Liquidity " * 80,  # largest single span: used to win and split MD&A
+        "Item 7A", "ITEM 7A. QUANTITATIVE AND QUALITATIVE DISCLOSURES", "Risk " * 30,
+    )  # fmt: skip
+
+    sections = {s.key: s for s in split_sections(blocks, "10-K").sections}
+
+    assert sections["item_6"].blocks[0].text == "Item 6"
+    assert len(sections["item_6"].blocks) == 3
+    md_a = " ".join(b.text for b in sections["item_7"].blocks)
+    assert "Overview" in md_a
+    assert "Liquidity" in md_a
+    assert sections["item_7a"].blocks[0].text == "Item 7A"
+
+
+@pytest.mark.parametrize(("form", "last_item"), [("10-K", "item_16"), ("10-Q", "part2_item_6")])
+def test_signatures_block_is_its_own_section(form, last_item):
+    """Regression (BUG-3): signatures and power of attorney were glued onto the last Item."""
+    heading = "Item 16. Form 10-K Summary" if form == "10-K" else "Item 6. Exhibits"
+    blocks = _text(
+        "PART II", heading, "None.", "SIGNATURES", "Pursuant to the requirements ...", "By: /s/ CEO"
+    )
+
+    sections = {s.key: s for s in split_sections(blocks, form).sections}
+
+    assert [b.text for b in sections[last_item].blocks] == [heading, "None."]
+    assert sections["signatures"].blocks[0].text == "SIGNATURES"
+
+
+def test_word_signature_inside_prose_is_not_a_heading():
+    assert _match_heading("Signature pages are attached.") is None

@@ -24,7 +24,13 @@ METRICS: tuple[MetricDef, ...] = (
     MetricDef(
         "revenue",
         "total revenue",
-        ("Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet"),
+        # RevenuesNetOfInterestExpense: banks (JPM reports quarterly total net revenue only there).
+        (
+            "Revenues",
+            "RevenuesNetOfInterestExpense",
+            "RevenueFromContractWithCustomerExcludingAssessedTax",
+            "SalesRevenueNet",
+        ),
         "USD",
         "duration",
         with_prior_year=True,

@@ -41,16 +41,27 @@ class JudgeLike(Protocol):  # JudgeSuite, or a fake in tests
 def smoke_subset(
     items: list[GoldenItem], per_category: dict[str, int] | None = None
 ) -> list[GoldenItem]:
-    """Deterministic stratified sample: per category, the first N items ordered by sha1(id).
+    """Deterministic stratified sample: N items per category, taken round-robin over the
+    category's subcategories, each subcategory ordered by sha1(id).
 
-    Hash order (not file order) keeps the sample stable when items are added to the dataset and
-    spreads it across companies and subcategories.
+    Round-robin guarantees every kind of check (e.g. prompt injection among adversarial items)
+    is in the CI gate whenever the quota allows; hash order keeps the sample stable when items
+    are added and spreads it across companies.
     """
     quota = per_category or SMOKE_PER_CATEGORY
-    by_cat: dict[str, list[GoldenItem]] = defaultdict(list)
+    groups: dict[str, dict[str, list[GoldenItem]]] = defaultdict(lambda: defaultdict(list))
     for item in sorted(items, key=lambda i: hashlib.sha1(i.id.encode()).hexdigest()):
-        by_cat[item.category].append(item)
-    return [i for cat, n in quota.items() for i in by_cat[cat][:n]]
+        groups[item.category][item.subcategory].append(item)
+    selected: list[GoldenItem] = []
+    for category, n in quota.items():
+        queues = [groups[category][sub] for sub in sorted(groups[category])]
+        picked: list[GoldenItem] = []
+        depth = 0
+        while len(picked) < n and any(depth < len(q) for q in queues):
+            picked += [q[depth] for q in queues if depth < len(q)][: n - len(picked)]
+            depth += 1
+        selected += picked
+    return selected
 
 
 class InjectingBackend:

@@ -90,3 +90,36 @@ def test_toc_table_stays_a_table_so_it_cannot_become_a_heading(parsed):
 def test_block_elements_split_and_inline_elements_join():
     parsed = parse_filing_html("<div>Hello <b>big</b><span> world</span></div><p>Next</p>")
     assert [b.text for b in parsed.blocks] == ["Hello big world", "Next"]
+
+
+# --- Regression (BUG-1): inline elements must be joined like a browser renders them ---
+
+
+def test_dei_value_split_across_inline_spans():
+    """MSFT 10-Q 0001193125-26-191507 writes the document type as <span>10-</span><span>Q</span>."""
+    html = (
+        '<html><body><ix:nonNumeric name="dei:DocumentType">'
+        '<span style="font-weight:bold">10-</span><span style="text-transform:uppercase">Q</span>'
+        "</ix:nonNumeric></body></html>"
+    )
+
+    assert parse_filing_html(html).dei["DocumentType"] == "10-Q"
+
+
+def test_table_cell_inline_spans_are_not_split():
+    html = (
+        "<table><tr><td><span>Net</span> <span>sales</span></td><td><span>$</span><span>391,035</span></td></tr>"
+        "<tr><td>Other</td><td>(<span>321</span>)</td></tr></table>"
+    )
+
+    rows = parse_filing_html(html).blocks[0].text.split("\n")
+
+    assert rows == ["Net sales | $391,035", "Other | (321)"]
+
+
+def test_table_cell_block_children_stay_separated():
+    html = "<table><tr><td><p>Total</p><p>revenue</p></td><td>1<br/>2</td></tr><tr><td>a</td><td>b</td></tr></table>"
+
+    rows = parse_filing_html(html).blocks[0].text.split("\n")
+
+    assert rows[0] == "Total revenue | 1 2"
