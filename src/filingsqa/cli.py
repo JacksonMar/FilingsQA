@@ -172,6 +172,29 @@ def dataset_validate(
         raise typer.Exit(1)
 
 
+SNAPSHOT_PATH = Path("eval/snapshots/smoke_chunks.jsonl.gz")
+
+
+@dataset_app.command("snapshot")
+def dataset_snapshot(
+    version: Annotated[str, typer.Option()] = "v1",
+    distractors: Annotated[int, typer.Option(help="Extra chunks per filing")] = 60,
+) -> None:
+    """Write the committed chunk snapshot the CI smoke gate indexes (no SEC access in CI)."""
+    from filingsqa.evaluation.dataset import load_items
+    from filingsqa.evaluation.runner import smoke_subset
+    from filingsqa.evaluation.snapshot import build_snapshot
+    from filingsqa.ingest.pipeline import save_chunks
+
+    items = smoke_subset(load_items(_dataset_path(version)))
+    snap = build_snapshot(items, load_chunks(CHUNKS_PATH), distractors)
+    save_chunks(snap, SNAPSHOT_PATH)
+    size_kb = SNAPSHOT_PATH.stat().st_size // 1024
+    typer.echo(
+        f"Wrote {len(snap)} chunks for {len(items)} smoke items to {SNAPSHOT_PATH} ({size_kb} KB)"
+    )
+
+
 @dataset_app.command("check-handwritten")
 def dataset_check_handwritten() -> None:
     """Schema-validate the hand-written source files (works without SEC data)."""

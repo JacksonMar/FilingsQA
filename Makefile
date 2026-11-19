@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install lint format typecheck test test-integration test-diff up down manifest ingest dataset serve eval eval-smoke
+.PHONY: help install lint format typecheck test test-integration test-diff up down manifest ingest dataset snapshot serve eval eval-smoke
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -8,9 +8,10 @@ install: ## Install deps and git hooks
 	uv sync
 	uv run pre-commit install
 
-lint: ## Ruff lint + format check
+lint: ## Ruff lint + format check + GitHub workflow lint
 	uv run ruff check .
 	uv run ruff format --check .
+	uv run actionlint .github/workflows/*.yml
 
 format: ## Auto-format code
 	uv run ruff check --fix .
@@ -46,6 +47,9 @@ ingest: ## Download pinned filings + XBRL facts, parse, chunk and index into Qdr
 dataset: ## Build golden dataset VERSION (needs make ingest) and validate it
 	uv run filingsqa dataset build --version $(VERSION)
 	uv run filingsqa dataset validate --version $(VERSION)
+
+snapshot: ## Refresh the committed chunk snapshot used by the CI smoke gate
+	uv run filingsqa dataset snapshot --version $(VERSION)
 
 serve: ## Run the API on http://localhost:8000 (docs at /docs)
 	uv run uvicorn filingsqa.api.app:create_app --factory --port 8000

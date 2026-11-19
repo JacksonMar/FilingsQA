@@ -1,12 +1,15 @@
 # FilingsQA
 
+[![CI](https://github.com/JacksonMar/filings-qa/actions/workflows/ci.yml/badge.svg)](https://github.com/JacksonMar/filings-qa/actions/workflows/ci.yml)
+[![Eval (full)](https://github.com/JacksonMar/filings-qa/actions/workflows/eval-full.yml/badge.svg)](https://github.com/JacksonMar/filings-qa/actions/workflows/eval-full.yml)
+
 > **QA** = Question Answering + Quality Assurance.
 
 A RAG chatbot that answers questions about US public companies using their SEC filings —
 and, more importantly, an evaluation and test suite that measures how much you can trust it.
 Numeric answers are checked automatically against official SEC XBRL data.
 
-**Status:** Phase 4 (evaluation suite). See `docs/DECISIONS.md` for design decisions.
+**Status:** Phase 5 (CI/CD). CI details: `docs/CI.md`. See `docs/DECISIONS.md` for design decisions.
 
 ## Quick start
 

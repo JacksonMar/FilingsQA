@@ -39,6 +39,9 @@ metrics. GitHub Actions.
 - `make lint` / `make format` / `make typecheck`
 - `make test` — unit tests; `make test-integration` — needs `make up`
 - `make ingest`, `make serve`, `make eval`, `make eval-smoke`
+- `make dataset`, `make snapshot` — golden dataset and the CI smoke chunk snapshot
+- CI: `.github/workflows/ci.yml` (PR gate incl. path-filtered `eval-smoke`), `eval-full.yml`
+  (nightly/manual). See `docs/CI.md`. `make lint` also runs actionlint on workflows.
 
 ## Layout
 - `src/filingsqa/` — application (edgar, ingest, index, rag, llm, api, cli)

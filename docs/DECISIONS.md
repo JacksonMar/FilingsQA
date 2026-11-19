@@ -307,3 +307,25 @@ Labels are tied to a hash of the exact answer text, so a label never applies to 
 A judge metric with kappa below ~0.6 should not gate CI.
 **Alternatives.** Raw percent agreement only (inflated when most answers pass); a second LLM as
 "ground truth" (measures model-model agreement, not correctness).
+
+## ADR-026: CI/CD layout
+**Context.** PR feedback must be fast and cheap; quality must still be gated on real model output.
+**Decision.** Two workflows. `ci.yml` on every PR: lint (ruff + actionlint) / mypy / unit tests /
+hand-written dataset schema check; integration tests against a Qdrant service container; and
+`eval-smoke`, gated by a path filter (`src/`, dataset, snapshot, thresholds, dependencies). The
+filter is a plain `git diff --name-only base...HEAD | grep` step in a `changes` job instead of a
+third-party action, so the job always reports (skipped = success for branch protection). Smoke
+indexes a committed, gzip-compressed chunk snapshot (expected sections of the smoke items + a
+deterministic sample of distractor chunks from the same filings), calls the real generator with
+the LLM cache **off**, and gates on deterministic metrics with the `smoke` thresholds. It is
+skipped with a warning when the dataset/snapshot is not committed yet or secrets are missing
+(fork PRs). `eval-full.yml` runs nightly and on demand: ingest pinned filings (cached by manifest
+hash), dataset QA with answerability, full eval with the LLM judge, report as job summary and
+artifact; the LLM cache is restored between nightly runs (key includes model and prompt).
+Workflow inputs reach scripts only via env vars (script-injection hardening).
+**Alternatives.** One workflow doing everything on each PR (slow, costs judge tokens, needs SEC);
+running smoke on the full corpus in CI (needs SEC access and minutes of embedding per PR);
+`paths:` on the workflow trigger (a skipped *workflow* blocks required checks, a skipped *job*
+does not).
+**Trade-off.** Retrieval on the snapshot is easier than on the full corpus, so smoke numbers are
+optimistic; smoke is a regression gate, the nightly run is the quality measurement.

@@ -1,5 +1,6 @@
 """Ingestion pipeline: manifest -> raw HTML (cached on disk) -> blocks -> sections -> chunks."""
 
+import gzip
 import json
 import logging
 from dataclasses import asdict, dataclass, field
@@ -95,5 +96,17 @@ def build_chunks(
 
 
 def load_chunks(path: Path) -> list[Chunk]:
-    with path.open(encoding="utf-8") as fh:
+    """Read chunks from JSONL, or gzip-compressed JSONL when the name ends with .gz."""
+    opener = gzip.open if path.suffix == ".gz" else open
+    with opener(path, "rt", encoding="utf-8") as fh:
         return [Chunk.model_validate_json(line) for line in fh if line.strip()]
+
+
+def save_chunks(chunks: list[Chunk], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = "".join(c.model_dump_json() + "\n" for c in chunks).encode("utf-8")
+    if path.suffix == ".gz":
+        # mtime=0 -> byte-identical output for identical input (clean git diffs)
+        path.write_bytes(gzip.compress(lines, mtime=0))
+    else:
+        path.write_bytes(lines)
