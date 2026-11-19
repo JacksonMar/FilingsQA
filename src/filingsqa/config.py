@@ -13,6 +13,7 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LLMProvider = Literal["anthropic"]
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
 
 
 class Settings(BaseSettings):
@@ -25,13 +26,15 @@ class Settings(BaseSettings):
     # Generator LLM (system under test)
     llm_provider: LLMProvider = "anthropic"
     llm_model: str = "claude-haiku-5-5"
-    llm_temperature: float = Field(default=0.0, ge=0.0, le=1.0)
+    # No temperature: current Claude models reject non-default sampling params (ADR-013).
+    llm_effort: Effort = "low"
+    llm_max_tokens: int = Field(default=4096, ge=256)
     anthropic_api_key: SecretStr | None = None
 
     # Judge LLM (evaluation only)
     judge_provider: LLMProvider = "anthropic"
     judge_model: str = "claude-sonnet-5-5"
-    judge_temperature: float = Field(default=0.0, ge=0.0, le=1.0)
+    judge_effort: Effort = "medium"
 
     # LLM cache
     llm_cache_enabled: bool = True
@@ -43,6 +46,11 @@ class Settings(BaseSettings):
 
     # Embeddings
     embedding_model: str = "BAAI/bge-small-en-v1.5"
+    sparse_model: str = "Qdrant/bm25"
+
+    # Retrieval
+    retrieval_top_k: int = Field(default=8, ge=1, le=50)
+    retrieval_prefetch_k: int = Field(default=40, ge=1, le=200)
 
     @field_validator("sec_user_agent")
     @classmethod

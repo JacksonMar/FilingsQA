@@ -6,17 +6,32 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
 dependencies = [
+    "anthropic>=2.9.0",
+    "beautifulsoup4>=4.15.0",
+    "deepeval>=4.3.4",
+    "fastapi>=0.163.1",
+    "fastembed>=0.9.1",
+    "httpx>=0.28.1",
+    "lxml>=6.1.3",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
+    "pyyaml>=6.0.3",
+    "qdrant-client>=1.20.0",
+    "typer>=0.29.1",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 [dependency-groups]
 dev = [
+    "actionlint-py>=1.7.12.25",
+    "edgartools>=6.2.0",
     "mypy>=1.13",
     "pre-commit>=4.0",
     "pytest>=8.3",
     "pytest-cov>=6.0",
     "ruff>=0.8",
+    "shellcheck-py>=0.11.0.1",
+    "types-pyyaml>=6.0.12.20261113",
 ]
 
 [build-system]
@@ -46,7 +61,7 @@ select = [
 ignore = ["ANN401"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["ANN"]
+"tests/**" = ["ANN", "E501"]  # long literal rows in test tables are clearer unwrapped
 
 [tool.mypy]
 python_version = "3.12"
@@ -57,7 +72,22 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+asyncio_default_fixture_loop_scope = "function"  # pytest-asyncio comes in via deepeval
+filterwarnings = [
+    # Known and handled (ADR-023): DeepEval >= 4 flipped HallucinationMetric to higher-is-better.
+    "ignore:'HallucinationMetric' now scores:DeprecationWarning",
+]
 markers = [
     "integration: needs running services (Qdrant); excluded from the default unit run",
     "network: talks to external APIs (SEC EDGAR, LLM providers)",
+    "differential: compares our parser with edgartools on real downloaded filings",
 ]
+
+[project.scripts]
+filingsqa = "filingsqa.cli:app"
+
+[[tool.mypy.overrides]]
+# DeepEval's type hints are partial; treat it as untyped instead of type-checking its internals.
+module = ["deepeval", "deepeval.*"]
+follow_imports = "skip"
+ignore_missing_imports = true

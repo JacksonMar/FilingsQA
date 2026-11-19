@@ -1,0 +1,98 @@
+name: Eval (full)
+
+# Full golden dataset + LLM judge on the real corpus. On demand, not on PRs: it downloads
+# filings from SEC, embeds thousands of chunks and costs judge tokens. ADR-026.
+#
+# The nightly schedule is OFF until the manifest and golden dataset are committed (a nightly
+# run would only fail its prerequisites check and waste CI minutes). To enable it, add:
+#   schedule:
+#     - cron: "17 3 * * *" # 03:17 UTC daily
+on:
+  workflow_dispatch:
+    inputs:
+      judge:
+        description: "Run LLM-judge metrics"
+        type: boolean
+        default: true
+      category:
+        description: "Only this category (empty = all)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-full
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.20.0
+        ports:
+          - 6333:6333
+    env:
+      UV_PYTHON: "3.12"
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+      FASTEMBED_CACHE_PATH: ${{ github.workspace }}/.cache/fastembed
+      VERSION: v1
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Check prerequisites
+        run: |
+          for f in data/manifest/filings.json "eval/datasets/golden_${VERSION}.jsonl"; do
+            [ -f "$f" ] || { echo "::error::missing $f - build the manifest and dataset first"; exit 1; }
+          done
+          [ -n "$ANTHROPIC_API_KEY" ] || { echo "::error::secret ANTHROPIC_API_KEY not set"; exit 1; }
+          [ -n "$SEC_USER_AGENT" ] || { echo "::error::secret SEC_USER_AGENT not set"; exit 1; }
+      - name: Cache raw filings (pinned by manifest) and models
+        uses: actions/cache@v5
+        with:
+          path: |
+            data/raw
+            .cache/fastembed
+          key: raw-${{ hashFiles('data/manifest/filings.json') }}-${{ hashFiles('uv.lock') }}
+      # LLM responses are cached across nightly runs only within a prompt/model version (the
+      # cache key includes both), so an unchanged night costs ~nothing and a change re-asks.
+      - name: Cache LLM responses
+        uses: actions/cache@v5
+        with:
+          path: .cache/llm
+          key: llm-${{ github.run_id }}
+          restore-keys: llm-
+      - name: Ingest (download pinned filings, parse, chunk, index)
+        run: make ingest
+      - name: Dataset QA (incl. answerability against the corpus)
+        run: uv run filingsqa dataset validate --version "$VERSION"
+      - name: Full eval
+        # Inputs go through env vars, never straight into the script (prevents script injection).
+        env:
+          INPUT_JUDGE: ${{ inputs.judge }}
+          INPUT_CATEGORY: ${{ inputs.category }}
+        run: |
+          args=(--version "$VERSION" --subset full --out eval/reports/full)
+          if [ "$INPUT_JUDGE" = "false" ]; then args+=(--no-judge); fi
+          if [ -n "$INPUT_CATEGORY" ]; then args+=(--category "$INPUT_CATEGORY"); fi
+          uv run filingsqa eval run "${args[@]}"
+      - name: Job summary
+        if: always()
+        run: '[ -f eval/reports/full/report.md ] && cat eval/reports/full/report.md >> "$GITHUB_STEP_SUMMARY" || true'
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: eval-full-report-${{ github.run_number }}
+          path: |
+            eval/reports/full/
+            data/processed/ingest_report.json
+          if-no-files-found: ignore
+          retention-days: 30

@@ -8,20 +8,133 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_PYTHON: "3.12"
+
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: uv python install 3.12
       - run: uv sync --frozen
       - name: Lint
         run: make lint
       - name: Type check
         run: make typecheck
-      - name: Unit tests
+      - name: Unit tests (no network, LLM mocked)
         run: make test
-  # eval-smoke job (paths-filtered: src/, prompts, eval/datasets) is added in Phase 5.
+      - name: Hand-written dataset schema check
+        run: uv run filingsqa dataset check-handwritten
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.20.0
+        ports:
+          - 6333:6333
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Wait for Qdrant
+        run: |
+          for _ in $(seq 1 30); do curl -sf http://localhost:6333/healthz && exit 0; sleep 1; done
+          exit 1
+      - name: Integration tests (real Qdrant, fake embedders)
+        run: make test-integration
+
+  # Decide whether the LLM-calling smoke eval is needed: only when the bot's behavior can change
+  # (code, prompts - they live in src/ -, dataset, thresholds, dependencies). ADR-026.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      eval: ${{ steps.filter.outputs.eval }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "eval=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          changed=$(git diff --name-only "$BASE_SHA"...HEAD)
+          echo "$changed"
+          if echo "$changed" | grep -qE '^(src/|eval/datasets/|eval/snapshots/|eval/thresholds\.yaml|pyproject\.toml|uv\.lock|\.github/workflows/)'; then
+            echo "eval=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "eval=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  eval-smoke:
+    needs: [changes, lint-and-test]
+    if: needs.changes.outputs.eval == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.20.0
+        ports:
+          - 6333:6333
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      LLM_CACHE_ENABLED: "false" # ADR-004: the gate must exercise the real generator
+      FASTEMBED_CACHE_PATH: ${{ github.workspace }}/.cache/fastembed
+      VERSION: v1
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Check prerequisites
+        id: ready
+        run: |
+          missing=""
+          for f in "eval/datasets/golden_${VERSION}.jsonl" "eval/datasets/golden_${VERSION}.meta.json" "eval/snapshots/smoke_chunks.jsonl.gz"; do
+            [ -f "$f" ] || missing="$missing $f"
+          done
+          [ -n "$ANTHROPIC_API_KEY" ] || missing="$missing secret:ANTHROPIC_API_KEY"
+          if [ -n "$missing" ]; then
+            echo "::warning title=eval-smoke skipped::missing:$missing (dataset not built yet, or a fork PR without secrets)"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Cache embedding models
+        if: steps.ready.outputs.ready == 'true'
+        uses: actions/cache@v5
+        with:
+          path: .cache/fastembed
+          key: fastembed-${{ hashFiles('uv.lock') }}
+      - name: Validate golden dataset (immutability, traceability)
+        if: steps.ready.outputs.ready == 'true'
+        run: uv run filingsqa dataset validate --version "$VERSION" --no-with-chunks
+      - name: Index chunk snapshot
+        if: steps.ready.outputs.ready == 'true'
+        run: uv run filingsqa index --chunks eval/snapshots/smoke_chunks.jsonl.gz
+      - name: Smoke eval (deterministic metrics, quality gate)
+        if: steps.ready.outputs.ready == 'true'
+        run: uv run filingsqa eval run --version "$VERSION" --subset smoke --no-judge --out eval/reports/smoke
+      - name: Job summary
+        if: always() && steps.ready.outputs.ready == 'true'
+        run: '[ -f eval/reports/smoke/report.md ] && cat eval/reports/smoke/report.md >> "$GITHUB_STEP_SUMMARY" || true'
+      - name: Upload report
+        if: always() && steps.ready.outputs.ready == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: eval-smoke-report
+          path: eval/reports/smoke/
+          if-no-files-found: ignore

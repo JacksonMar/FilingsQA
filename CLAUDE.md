@@ -23,7 +23,8 @@ QA = Question Answering + Quality Assurance. Portfolio project for AI/ML QA role
 - Unit tests: no network, LLM always mocked. Network tests are marked `network`,
   Qdrant tests are marked `integration`.
 - Keep LLM costs low: disk cache for LLM responses in dev, small eval subsets in CI,
-  temperature 0, thresholds with margin to avoid flaky gates.
+  LLM response cache, thresholds with margin to avoid flaky gates. No `temperature`: current
+  Claude models reject non-default sampling params (ADR-013).
 - Generator and judge LLMs are configured separately (generator: Haiku, judge: Sonnet).
 - Filings and ground truth are **frozen**: accession numbers in a committed manifest, XBRL
   expected values embedded in the golden dataset. Raw HTML is never committed.
@@ -38,10 +39,14 @@ metrics. GitHub Actions.
 - `make lint` / `make format` / `make typecheck`
 - `make test` — unit tests; `make test-integration` — needs `make up`
 - `make ingest`, `make serve`, `make eval`, `make eval-smoke`
+- `make dataset`, `make snapshot` — golden dataset and the CI smoke chunk snapshot
+- CI: `.github/workflows/ci.yml` (PR gate incl. path-filtered `eval-smoke`), `eval-full.yml`
+  (manual; nightly schedule off until data is committed). See `docs/CI.md`. `make lint` also runs actionlint on workflows.
 
 ## Layout
 - `src/filingsqa/` — application (edgar, ingest, index, rag, llm, api, cli)
-- `eval/` — datasets (versioned JSONL), generators, metrics, thresholds, runner
+- `src/filingsqa/evaluation/` — eval code: dataset schema, XBRL generators, dataset QA, metrics, runner
+- `eval/` — data only: `datasets/` (hand-written sources + immutable `golden_vN.jsonl`), thresholds, reports
 - `tests/` — unit / integration / fixtures (small HTML/JSON snippets)
 - `docs/` — DECISIONS.md, BUGS_FOUND.md, ARCHITECTURE.md
 
