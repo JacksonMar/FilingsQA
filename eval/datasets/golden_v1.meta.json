@@ -1,0 +1,19 @@
+{
+  "version": "v1",
+  "created": "2026-11-19",
+  "manifest_as_of": "2026-11-17",
+  "n_items": 214,
+  "by_category": {
+    "adversarial": 28,
+    "comparison": 30,
+    "numeric": 106,
+    "qualitative": 30,
+    "temporal": 20
+  },
+  "by_behavior": {
+    "answer": 185,
+    "decline_advice": 8,
+    "insufficient_context": 21
+  },
+  "sha256": "46f3c4c78772c4cd81fb6b44595addd39e1710c2507d33e5c0749da10b3bc3ef"
+}

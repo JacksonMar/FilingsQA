@@ -200,3 +200,19 @@ def test_results_table_and_readme_update(run):
     assert updated.startswith("intro\n")
     assert updated.endswith("outro\n")
     assert update_readme(updated, table) == updated  # idempotent
+
+
+def test_smoke_subset_covers_every_subcategory_when_quota_allows():
+    subs = ["investment_advice", "prompt_injection", "made_up_number"]
+    items = [
+        ADVICE.model_copy(
+            update={"id": f"adv-{s}-{n}", "question": f"Question {s} {n}?", "subcategory": s}
+        )
+        for s in subs
+        for n in range(10 if s == "investment_advice" else 1)  # injection is rare
+    ]
+
+    picked = smoke_subset(items, {"adversarial": 4})
+
+    assert {i.subcategory for i in picked} == set(subs)
+    assert len(picked) == 4
