@@ -182,3 +182,21 @@ def test_report_lists_unit_errors():
 
     assert "## Unit mix-ups" in md
     assert "$130,497 billion" in md
+
+
+def test_results_table_and_readme_update(run):
+    from filingsqa.evaluation.report import README_END, README_START, results_table, update_readme
+
+    table = results_table(run)
+
+    assert table.splitlines()[0].startswith(
+        "| category | items | behavior_match | numeric_accuracy"
+    )
+    assert "| **overall** | 3 |" in table
+    assert "Gates: FAILED" in table
+    readme = f"intro\n{README_START}\nold\n{README_END}\noutro\n"
+    updated = update_readme(readme, table)
+    assert "old" not in updated
+    assert updated.startswith("intro\n")
+    assert updated.endswith("outro\n")
+    assert update_readme(updated, table) == updated  # idempotent

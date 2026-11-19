@@ -12,6 +12,14 @@ the development sandbox so far). Entries will be added from the first real eval 
 |----|----------|---------|-------------|------------|-----|-----------------|
 | - | - | - | - | - | - | - |
 
+### How to log a bot defect
+1. Find it in `report.md` of an eval run (failures section, unit mix-ups, gate failures).
+2. Confirm it is not a dataset or ingestion problem: `filingsqa dataset validate` is clean for the
+   item and `context_has_numbers` / `recall_at_k` show whether retrieval found the evidence.
+3. Classify the root cause: retrieval, prompt, parsing/chunking, metadata, or model behavior.
+4. Fix it, add a regression test (unit test or golden item), re-run the affected category, and
+   record before -> after scores in the table above.
+
 ## Defects in the eval suite itself
 
 Found while building the suite. Logged because a wrong eval produces false bug reports.

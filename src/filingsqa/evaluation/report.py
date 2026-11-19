@@ -89,3 +89,47 @@ def save_run(run: RunResult, out_dir: Path) -> tuple[Path, Path]:
     json_path.write_text(run.model_dump_json(indent=2), encoding="utf-8")
     md_path.write_text(render_markdown(run), encoding="utf-8")
     return json_path, md_path
+
+
+README_START = "<!-- results:start -->"
+README_END = "<!-- results:end -->"
+README_METRICS = [
+    "behavior_match", "numeric_accuracy", "period_mentioned", "citation_validity",
+    "recall_at_k", "mrr", "faithfulness", "fiscal_period_correct",
+]  # fmt: skip
+
+
+def results_table(run: RunResult) -> str:
+    """Compact category x metric table for the README, with provenance of the run."""
+    md = run.metadata
+    scopes = [c for c in CATEGORY_ORDER if c in run.summary] + ["overall"]
+    metrics = [m for m in README_METRICS if any(m in run.summary.get(s, {}) for s in scopes)]
+    n_items = {s: sum(1 for r in run.items if r.category == s) for s in scopes}
+    n_items["overall"] = len(run.items)
+    lines = [
+        "| category | items | " + " | ".join(metrics) + " |",
+        "|---|---|" + "---|" * len(metrics),
+    ]
+    for s in scopes:
+        cells = []
+        for m in metrics:
+            stats = run.summary.get(s, {}).get(m)
+            cells.append(f"{stats['mean']:.2f}" if stats else "-")
+        name = f"**{s}**" if s == "overall" else s
+        lines.append(f"| {name} | {n_items[s]} | " + " | ".join(cells) + " |")
+    lines += [
+        "",
+        f"Dataset `{md.get('dataset_version')}` ({md.get('subset')}), prompt "
+        f"`{md.get('prompt_version')}`, generator `{md.get('generator')}`, judge "
+        f"`{md.get('judge_model')}`, commit `{md.get('git_commit')}`, {md.get('finished_at')}. "
+        f"Gates: {'all passed' if run.passed else 'FAILED'}.",
+    ]
+    return "\n".join(lines)
+
+
+def update_readme(readme: str, table: str) -> str:
+    if README_START not in readme or README_END not in readme:
+        raise ValueError("README has no results markers")
+    head, rest = readme.split(README_START, 1)
+    _, tail = rest.split(README_END, 1)
+    return f"{head}{README_START}\n{table}\n{README_END}{tail}"

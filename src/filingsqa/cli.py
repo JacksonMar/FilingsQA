@@ -282,6 +282,24 @@ def eval_run(
         raise typer.Exit(1)
 
 
+@eval_app.command("results-table")
+def eval_results_table(
+    run: Annotated[Path, typer.Option(help="results.json of a run")],
+    update_readme: Annotated[bool, typer.Option(help="Write the table into README.md")] = False,
+) -> None:
+    """Category x metric table of a run, for the README."""
+    from filingsqa.evaluation import report
+    from filingsqa.evaluation.runner import RunResult
+
+    table = report.results_table(RunResult.model_validate_json(run.read_text()))
+    if update_readme:
+        readme = Path("README.md")
+        readme.write_text(report.update_readme(readme.read_text(), table))
+        typer.echo("README.md updated")
+    else:
+        typer.echo(table)
+
+
 @eval_app.command("label-sample")
 def eval_label_sample(
     run: Annotated[Path, typer.Option(help="results.json of a judged run")],
