@@ -1,10 +1,13 @@
 name: Eval (full)
 
-# Full golden dataset + LLM judge on the real corpus. Nightly and on demand, not on PRs:
-# it downloads filings from SEC, embeds ~thousands of chunks and costs judge tokens. ADR-026.
+# Full golden dataset + LLM judge on the real corpus. On demand, not on PRs: it downloads
+# filings from SEC, embeds thousands of chunks and costs judge tokens. ADR-026.
+#
+# The nightly schedule is OFF until the manifest and golden dataset are committed (a nightly
+# run would only fail its prerequisites check and waste CI minutes). To enable it, add:
+#   schedule:
+#     - cron: "17 3 * * *" # 03:17 UTC daily
 on:
-  schedule:
-    - cron: "17 3 * * *" # 03:17 UTC daily
   workflow_dispatch:
     inputs:
       judge:
@@ -39,8 +42,8 @@ jobs:
       FASTEMBED_CACHE_PATH: ${{ github.workspace }}/.cache/fastembed
       VERSION: v1
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - run: uv sync --frozen
@@ -52,7 +55,7 @@ jobs:
           [ -n "$ANTHROPIC_API_KEY" ] || { echo "::error::secret ANTHROPIC_API_KEY not set"; exit 1; }
           [ -n "$SEC_USER_AGENT" ] || { echo "::error::secret SEC_USER_AGENT not set"; exit 1; }
       - name: Cache raw filings (pinned by manifest) and models
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             data/raw
@@ -61,7 +64,7 @@ jobs:
       # LLM responses are cached across nightly runs only within a prompt/model version (the
       # cache key includes both), so an unchanged night costs ~nothing and a change re-asks.
       - name: Cache LLM responses
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .cache/llm
           key: llm-${{ github.run_id }}
@@ -85,7 +88,7 @@ jobs:
         run: '[ -f eval/reports/full/report.md ] && cat eval/reports/full/report.md >> "$GITHUB_STEP_SUMMARY" || true'
       - name: Upload report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: eval-full-report-${{ github.run_number }}
           path: |

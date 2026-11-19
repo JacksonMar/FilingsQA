@@ -329,3 +329,7 @@ running smoke on the full corpus in CI (needs SEC access and minutes of embeddin
 does not).
 **Trade-off.** Retrieval on the snapshot is easier than on the full corpus, so smoke numbers are
 optimistic; smoke is a regression gate, the nightly run is the quality measurement.
+**Amendment (Phase 5 follow-up).** The `eval-full` nightly schedule is disabled until the manifest
+and golden dataset are committed; until then a scheduled run could only fail its prerequisites
+check. Actions were bumped to Node 24 majors (checkout v6, setup-uv v7, cache v5,
+upload-artifact v6) after checking their `action.yml` for the inputs we use.

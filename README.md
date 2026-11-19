@@ -166,7 +166,7 @@ and Cohen's kappa are reported (`filingsqa eval judge-agreement`).
 `eval/thresholds.yaml` sets minimum mean scores per category for two profiles. Every PR that
 touches code, prompts, data or dependencies runs **`eval-smoke`**: about 20 stratified items,
 the real generator, deterministic metrics only, run against a committed chunk snapshot (no SEC
-access in CI). The **nightly full eval** ingests the pinned filings, runs dataset QA and evaluates
+access in CI). The **full eval** (manual for now, nightly once real data is committed) ingests the pinned filings, runs dataset QA and evaluates
 every item with the LLM judge. Details: [`docs/CI.md`](docs/CI.md).
 
 Current LLMs no longer accept `temperature`, so runs are not bit-for-bit reproducible. Variance is
